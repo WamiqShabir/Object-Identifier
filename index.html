@@ -1,192 +1,226 @@
 
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <base target="_top">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Camera</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; }
-
     body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 20px;
-      background: #101525;
-      color: #f4f6ff;
-      font-family: Arial, sans-serif;
+      margin: 0; min-height: 100vh; padding: 24px;
+      display: grid; place-items: center;
+      font: 16px/1.5 system-ui, sans-serif;
+      background: #101525; color: #f5f6ff;
     }
-
-    .card {
-      width: 100%;
-      max-width: 440px;
-      padding: 26px;
+    main {
+      width: 100%; max-width: 500px; padding: 28px;
+      border: 1px solid #35415e; border-radius: 22px;
       background: #1b2338;
-      border: 1px solid #34405c;
-      border-radius: 22px;
-      text-align: center;
     }
-
     h1 { margin-top: 0; }
-
-    p { color: #b9c3dc; line-height: 1.5; }
-
+    .muted { color: #b9c3dc; }
+    label { display: block; margin: 16px 0 6px; }
     input {
-      display: block;
-      width: 100%;
-      margin: 22px 0;
-      padding: 12px;
-      background: #111a2c;
-      color: white;
-      border-radius: 12px;
+      display: block; width: 100%; padding: 12px;
+      border-radius: 10px; border: 1px solid #47536e;
+      background: #101525; color: white;
     }
-
-    img {
-      display: none;
-      width: 100%;
-      max-height: 320px;
-      object-fit: contain;
-      margin: 18px 0;
-      border-radius: 12px;
-    }
-
     button {
-      width: 100%;
-      padding: 14px;
-      border: 0;
-      border-radius: 12px;
-      background: #8b7cff;
-      color: white;
-      font-weight: bold;
-      font-size: 16px;
-      cursor: pointer;
+      width: 100%; padding: 13px; margin-top: 12px;
+      border: 0; border-radius: 10px;
+      background: #8b7cff; color: white;
+      font-size: 15px; font-weight: 700; cursor: pointer;
     }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: wait;
+    button:disabled { opacity: .55; cursor: wait; }
+    .secondary { background: #35415e; }
+    img {
+      display: none; width: 100%; max-height: 360px;
+      object-fit: contain; margin-top: 18px; border-radius: 12px;
     }
-
-    #status {
-      overflow-wrap: anywhere;
-      margin-top: 18px;
-    }
-
-    a { color: #b7adff; }
+    #status { overflow-wrap: anywhere; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <main class="card">
-    <h1>🔒 My Private Camera</h1>
-    <p>
-      Take a picture or choose an image.
-      Upload it to your private Google Drive.
-    </p>
+<main>
+  <h1>📷 Private Camera</h1>
+  <p class="muted">Sign in, take a picture, and securely save it to your private gallery.</p>
 
-    <input
-      id="photo"
-      type="file"
-      accept="image/*"
-      capture="environment"
-    >
+  <section id="login">
+    <label for="email">Your email</label>
+    <input id="email" type="email" autocomplete="username"
+           placeholder="you@example.com">
+    <label for="password">Password</label>
+    <input id="password" type="password"
+           autocomplete="current-password" placeholder="Your password">
+    <button id="loginButton">Sign in</button>
+  </section>
 
+  <section id="camera" hidden>
+    <p id="account" class="muted"></p>
+    <label for="photo">Take a picture or choose a file</label>
+    <input id="photo" type="file" accept="image/jpeg,image/png,image/webp"
+           capture="environment">
     <img id="preview" alt="Selected photo preview">
+    <button id="uploadButton" disabled>Upload privately</button>
+    <button id="galleryButton" class="secondary">Open private gallery</button>
+    <button id="logoutButton" class="secondary">Sign out</button>
+  </section>
 
-    <button id="upload" disabled>
-      Upload to My Drive
-    </button>
+  <p id="status" role="status" aria-live="polite" class="muted">
+    Enter your account details to continue.
+  </p>
+</main>
 
-    <p id="status" role="status">
-      Choose a picture to get started.
-    </p>
-  </main>
+<script>
+(() => {
+  const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";
+  const SUPABASE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";
+  const BUCKET = "private-photos";
 
-  <script>
-    const input = document.getElementById("photo");
-    const preview = document.getElementById("preview");
-    const button = document.getElementById("upload");
-    const status = document.getElementById("status");
+  const client = window.supabase.createClient(
+    SUPABASE_URL, SUPABASE_KEY
+  );
 
-    let selectedFile = null;
+  const $ = id => document.getElementById(id);
+  let currentUser = null;
+  let selectedFile = null;
 
-    input.addEventListener("change", () => {
-      selectedFile = input.files[0] || null;
-      button.disabled = !selectedFile;
+  function status(message) {
+    $("status").textContent = message;
+  }
 
-      if (!selectedFile) {
-        preview.style.display = "none";
-        status.textContent = "No picture selected.";
-        return;
-      }
+  function showSession(user) {
+    currentUser = user;
+    $("login").hidden = !!user;
+    $("camera").hidden = !user;
+    $("account").textContent = user ? "Signed in as " + user.email : "";
+    if (!user) {
+      selectedFile = null;
+      $("photo").value = "";
+      $("preview").removeAttribute("src");
+      $("preview").style.display = "none";
+      $("uploadButton").disabled = true;
+    }
+  }
 
-      if (!selectedFile.type.startsWith("image/")) {
-        selectedFile = null;
-        button.disabled = true;
-        status.textContent = "Please select an image.";
-        return;
-      }
+  async function refreshSession() {
+    const { data, error } = await client.auth.getSession();
+    if (error) status(error.message);
+    showSession(data.session?.user || null);
+  }
 
-      const reader = new FileReader();
+  $("loginButton").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    const password = $("password").value;
+    if (!email || !password) return status("Enter your email and password.");
 
-      reader.onload = () => {
-        preview.src = reader.result;
-        preview.style.display = "block";
-        status.textContent = "Picture ready to upload.";
-      };
+    $("loginButton").disabled = true;
+    status("Signing in...");
 
-      reader.readAsDataURL(selectedFile);
-    });
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email, password
+      });
+      if (error) throw error;
+      showSession(data.user);
+      status("Signed in successfully.");
+    } catch (error) {
+      status("Sign-in failed: " + error.message);
+    } finally {
+      $("loginButton").disabled = false;
+    }
+  });
 
-    button.addEventListener("click", () => {
-      if (!selectedFile) return;
+  $("photo").addEventListener("change", () => {
+    selectedFile = $("photo").files[0] || null;
+    $("uploadButton").disabled = !selectedFile;
 
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        status.textContent =
-          "Please choose an image smaller than 5 MB.";
-        return;
-      }
+    if (!selectedFile) {
+      $("preview").style.display = "none";
+      status("Choose a picture.");
+      return;
+    }
 
-      button.disabled = true;
-      status.textContent = "Uploading your picture...";
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(selectedFile.type)) {
+      selectedFile = null;
+      $("photo").value = "";
+      $("uploadButton").disabled = true;
+      $("preview").style.display = "none";
+      return status("Choose a JPEG, PNG, or WebP image.");
+    }
 
-      const reader = new FileReader();
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      selectedFile = null;
+      $("photo").value = "";
+      $("uploadButton").disabled = true;
+      $("preview").style.display = "none";
+      return status("The image must be 10 MB or smaller.");
+    }
 
-      reader.onload = () => {
-        google.script.run
-          .withSuccessHandler(result => {
-            status.replaceChildren();
+    $("preview").src = URL.createObjectURL(selectedFile);
+    $("preview").style.display = "block";
+    status("Picture ready. Press Upload privately when you're ready.");
+  });
 
-            const message = document.createElement("span");
-            message.textContent =
-              "✅ Saved privately: " + result.name;
-            status.appendChild(message);
-            status.appendChild(document.createElement("br"));
+  $("uploadButton").addEventListener("click", async () => {
+    if (!currentUser || !selectedFile) return;
 
-            const link = document.createElement("a");
-            link.href = result.url;
-            link.target = "_blank";
-            link.rel = "noopener";
-            link.textContent = "Open picture in Google Drive";
-            status.appendChild(link);
+    $("uploadButton").disabled = true;
+    status("Uploading your picture...");
 
-            button.disabled = false;
-          })
-          .withFailureHandler(error => {
-            status.textContent =
-              "Upload failed: " + error.message;
-            button.disabled = false;
-          })
-          .saveImage(reader.result);
-      };
+    try {
+      const extension = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp"
+      }[selectedFile.type];
 
-      reader.onerror = () => {
-        status.textContent = "Could not read the picture.";
-        button.disabled = false;
-      };
+      const fileName = Date.now() + "-" +
+        crypto.randomUUID() + "." + extension;
+      const path = currentUser.id + "/" + fileName;
 
-      reader.readAsDataURL(selectedFile);
-    });
-  </script>
+      const { error } = await client.storage
+        .from(BUCKET)
+        .upload(path, selectedFile, {
+          contentType: selectedFile.type,
+          upsert: false
+        });
+
+      if (error) throw error;
+
+      selectedFile = null;
+      $("photo").value = "";
+      $("preview").style.display = "none";
+      $("preview").removeAttribute("src");
+      status("✅ Picture uploaded privately! Open your gallery to download it.");
+    } catch (error) {
+      status("Upload failed: " + error.message);
+    } finally {
+      $("uploadButton").disabled = !selectedFile;
+    }
+  });
+
+  $("galleryButton").addEventListener("click", () => {
+    window.location.href = "YOUR_GALLERY_URL";
+  });
+
+  $("logoutButton").addEventListener("click", async () => {
+    const { error } = await client.auth.signOut();
+    if (error) status(error.message);
+    else status("You have signed out.");
+  });
+
+  client.auth.onAuthStateChange((_event, session) => {
+    showSession(session?.user || null);
+  });
+
+  refreshSession();
+})();
+</script>
 </body>
 </html>
