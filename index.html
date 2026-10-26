@@ -1,133 +1,345 @@
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101525">
   <title>Private Camera</title>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     * { box-sizing: border-box; }
+
     body {
-      margin: 0; min-height: 100vh; padding: 24px;
-      display: grid; place-items: center;
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px;
+      display: grid;
+      place-items: center;
+      background: #101525;
+      color: #f5f6ff;
       font: 16px/1.5 system-ui, sans-serif;
-      background: #101525; color: #f5f6ff;
     }
+
     main {
-      width: 100%; max-width: 500px; padding: 28px;
-      border: 1px solid #35415e; border-radius: 22px;
+      width: 100%;
+      max-width: 520px;
+      padding: 24px;
+      border: 1px solid #35415e;
+      border-radius: 24px;
       background: #1b2338;
     }
-    h1 { margin-top: 0; }
+
+    h1 { margin: 0 0 6px; }
+
     .muted { color: #b9c3dc; }
-    label { display: block; margin: 16px 0 6px; }
+
+    label {
+      display: block;
+      margin: 16px 0 6px;
+    }
+
     input {
-      display: block; width: 100%; padding: 12px;
-      border-radius: 10px; border: 1px solid #47536e;
-      background: #101525; color: white;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #47536e;
+      border-radius: 10px;
+      background: #101525;
+      color: white;
     }
-    button {
-      width: 100%; padding: 13px; margin-top: 12px;
-      border: 0; border-radius: 10px;
-      background: #8b7cff; color: white;
-      font-size: 15px; font-weight: 700; cursor: pointer;
+
+    button, .gallery-link {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 12px 16px;
+      border: 0;
+      border-radius: 12px;
+      background: #8b7cff;
+      color: white;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
     }
-    button:disabled { opacity: .55; cursor: wait; }
-    .secondary { background: #35415e; }
-    img {
-      display: none; width: 100%; max-height: 360px;
-      object-fit: contain; margin-top: 18px; border-radius: 12px;
+
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
     }
-    #status { overflow-wrap: anywhere; }
+
+    .secondary {
+      background: #35415e;
+    }
+
+    .full {
+      width: 100%;
+      margin-top: 12px;
+    }
+
+    .camera-frame {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      margin-top: 18px;
+      border-radius: 18px;
+      background: #090d17;
+    }
+
+    video, #snapshot {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    video.mirror {
+      transform: scaleX(-1);
+    }
+
+    #snapshot {
+      display: none;
+    }
+
+    .camera-label {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      padding: 6px 10px;
+      border-radius: 20px;
+      background: #0009;
+      font-size: 12px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1.25fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .controls button {
+      width: 100%;
+    }
+
+    #status {
+      min-height: 24px;
+      overflow-wrap: anywhere;
+    }
+
     [hidden] { display: none !important; }
+
+    @media (max-width: 380px) {
+      main { padding: 16px; }
+      button, .gallery-link { padding: 10px; font-size: 14px; }
+    }
   </style>
 </head>
+
 <body>
 <main>
-  <h1>📷 Private Camera</h1>
-  <p class="muted">Sign in, take a picture, and securely save it to your private gallery.</p>
+  <h1>📸 Private Camera</h1>
+  <p class="muted">Take a picture and save it to your private gallery.</p>
 
   <section id="login">
-    <label for="email">Your email</label>
+    <label for="email">Email</label>
     <input id="email" type="email" autocomplete="username"
-           placeholder="you@example.com">
+           placeholder="Your email">
+
     <label for="password">Password</label>
     <input id="password" type="password"
-           autocomplete="current-password" placeholder="Your password">
-    <button id="loginButton">Sign in</button>
+           autocomplete="current-password"
+           placeholder="Your password">
+
+    <button id="loginButton" class="full">Sign in</button>
   </section>
 
   <section id="camera" hidden>
     <p id="account" class="muted"></p>
-    <label for="photo">Take a picture or choose a file</label>
-    <input id="photo" type="file" accept="image/jpeg,image/png,image/webp"
-           capture="environment">
-    <img id="preview" alt="Selected photo preview">
-    <button id="uploadButton" disabled>Upload privately</button>
-    <button id="galleryButton" class="secondary">Open private gallery</button>
-    <button id="logoutButton" class="secondary">Sign out</button>
+
+    <div class="camera-frame">
+      <video id="video" autoplay muted playsinline></video>
+      <img id="snapshot" alt="Your captured picture">
+      <span id="cameraLabel" class="camera-label">Back camera</span>
+    </div>
+
+    <div class="controls">
+      <button id="switchButton" class="secondary">
+        🔄 Switch camera
+      </button>
+      <button id="captureButton">
+        ● Take picture
+      </button>
+    </div>
+
+    <button id="retakeButton" class="secondary full" hidden>
+      ↩ Retake picture
+    </button>
+
+    <a id="galleryLink" class="gallery-link full"
+       href="YOUR_GALLERY_URL">
+      🖼️ Open private gallery
+    </a>
+
+    <button id="logoutButton" class="secondary full">
+      Sign out
+    </button>
   </section>
 
-  <p id="status" role="status" aria-live="polite" class="muted">
-    Enter your account details to continue.
+  <p id="status" class="muted" role="status" aria-live="polite">
+    Sign in to start your camera.
   </p>
 </main>
 
 <script>
 (() => {
-  const SUPABASE_URL = "https://kppmbperljkamtpiqnje.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_-Y5TO2xKBQftO1Vu2R0vtA_nd0PXRZr";
+  // Replace these with your own Supabase project details.
+  const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";
+  const SUPABASE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";
   const BUCKET = "private-photos";
 
   const client = window.supabase.createClient(
-    SUPABASE_URL, SUPABASE_KEY
+    SUPABASE_URL,
+    SUPABASE_KEY
   );
 
   const $ = id => document.getElementById(id);
+
   let currentUser = null;
-  let selectedFile = null;
+  let stream = null;
+  let facingMode = "environment";
+  let busy = false;
+  let cameraStarting = false;
+  let cameraVersion = 0;
+  let photoUrl = null;
 
   function status(message) {
     $("status").textContent = message;
+  }
+
+  function stopCamera() {
+    cameraVersion++;
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    $("video").srcObject = null;
   }
 
   function showSession(user) {
     currentUser = user;
     $("login").hidden = !!user;
     $("camera").hidden = !user;
-    $("account").textContent = user ? "Signed in as " + user.email : "";
+
+    $("account").textContent =
+      user ? "Signed in as " + user.email : "";
+
     if (!user) {
-      selectedFile = null;
-      $("photo").value = "";
-      $("preview").removeAttribute("src");
-      $("preview").style.display = "none";
-      $("uploadButton").disabled = true;
+      stopCamera();
+      $("snapshot").style.display = "none";
+      $("video").style.display = "block";
+      $("retakeButton").hidden = true;
+      $("captureButton").disabled = false;
+      $("switchButton").disabled = false;
     }
   }
 
-  async function refreshSession() {
-    const { data, error } = await client.auth.getSession();
-    if (error) status(error.message);
-    showSession(data.session?.user || null);
+  async function startCamera() {
+    if (!currentUser || busy || cameraStarting) return;
+
+    cameraStarting = true;
+    const version = ++cameraVersion;
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    $("video").srcObject = null;
+    $("video").style.display = "block";
+    $("snapshot").style.display = "none";
+    $("retakeButton").hidden = true;
+    $("captureButton").disabled = true;
+    $("switchButton").disabled = true;
+    $("cameraLabel").textContent =
+      facingMode === "user" ? "Front camera" : "Back camera";
+
+    status("Starting camera...");
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 1600 }
+        }
+      });
+
+      if (version !== cameraVersion || !currentUser) {
+        newStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      stream = newStream;
+      const track = stream.getVideoTracks()[0];
+      const actualFacing = track.getSettings().facingMode;
+
+      $("cameraLabel").textContent =
+        actualFacing === "user" ? "Front camera" :
+        actualFacing === "environment" ? "Back camera" :
+        (facingMode === "user" ? "Front camera" : "Back camera");
+
+      $("video").classList.toggle(
+        "mirror", actualFacing === "user"
+      );
+
+      $("video").srcObject = stream;
+      await $("video").play();
+
+      status("Camera ready. Take a picture when you're ready.");
+      $("captureButton").disabled = false;
+      $("switchButton").disabled = false;
+
+    } catch (error) {
+      if (version === cameraVersion) {
+        status("Cannot start camera. Allow camera permission and try again. " +
+          error.message);
+      }
+    } finally {
+      cameraStarting = false;
+    }
   }
 
   $("loginButton").addEventListener("click", async () => {
     const email = $("email").value.trim();
     const password = $("password").value;
-    if (!email || !password) return status("Enter your email and password.");
+
+    if (!email || !password) {
+      status("Enter your email and password.");
+      return;
+    }
 
     $("loginButton").disabled = true;
     status("Signing in...");
 
     try {
       const { data, error } = await client.auth.signInWithPassword({
-        email, password
+        email,
+        password
       });
+
       if (error) throw error;
+
       showSession(data.user);
-      status("Signed in successfully.");
+      await startCamera();
     } catch (error) {
       status("Sign-in failed: " + error.message);
     } finally {
@@ -135,91 +347,132 @@
     }
   });
 
-  $("photo").addEventListener("change", () => {
-    selectedFile = $("photo").files[0] || null;
-    $("uploadButton").disabled = !selectedFile;
+  $("switchButton").addEventListener("click", async () => {
+    if (busy || cameraStarting) return;
 
-    if (!selectedFile) {
-      $("preview").style.display = "none";
-      status("Choose a picture.");
+    facingMode = facingMode === "environment" ? "user" : "environment";
+    await startCamera();
+  });
+
+  $("captureButton").addEventListener("click", async () => {
+    if (!currentUser || !stream || busy) return;
+
+    const video = $("video");
+
+    if (!video.videoWidth || !video.videoHeight) {
+      status("Camera is not ready yet. Try again.");
       return;
     }
 
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(selectedFile.type)) {
-      selectedFile = null;
-      $("photo").value = "";
-      $("uploadButton").disabled = true;
-      $("preview").style.display = "none";
-      return status("Choose a JPEG, PNG, or WebP image.");
-    }
-
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      selectedFile = null;
-      $("photo").value = "";
-      $("uploadButton").disabled = true;
-      $("preview").style.display = "none";
-      return status("The image must be 10 MB or smaller.");
-    }
-
-    $("preview").src = URL.createObjectURL(selectedFile);
-    $("preview").style.display = "block";
-    status("Picture ready. Press Upload privately when you're ready.");
-  });
-
-  $("uploadButton").addEventListener("click", async () => {
-    if (!currentUser || !selectedFile) return;
-
-    $("uploadButton").disabled = true;
-    status("Uploading your picture...");
+    busy = true;
+    $("captureButton").disabled = true;
+    $("switchButton").disabled = true;
 
     try {
-      const extension = {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/webp": "webp"
-      }[selectedFile.type];
+      // Capture the actual camera frame.
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
+      const context = canvas.getContext("2d");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(result => {
+          if (result) resolve(result);
+          else reject(new Error("Could not capture the picture."));
+        }, "image/jpeg", 0.90);
+      });
+
+      // Show the captured image while it uploads.
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+      photoUrl = URL.createObjectURL(blob);
+
+      $("snapshot").src = photoUrl;
+      $("snapshot").style.display = "block";
+      $("video").style.display = "none";
+      $("retakeButton").hidden = false;
+
+      status("Picture captured. Saving privately...");
+
+      const user = currentUser;
       const fileName = Date.now() + "-" +
-        crypto.randomUUID() + "." + extension;
-      const path = currentUser.id + "/" + fileName;
+        crypto.randomUUID() + ".jpg";
+      const path = user.id + "/" + fileName;
 
       const { error } = await client.storage
         .from(BUCKET)
-        .upload(path, selectedFile, {
-          contentType: selectedFile.type,
+        .upload(path, blob, {
+          contentType: "image/jpeg",
           upsert: false
         });
 
       if (error) throw error;
 
-      selectedFile = null;
-      $("photo").value = "";
-      $("preview").style.display = "none";
-      $("preview").removeAttribute("src");
-      status("✅ Picture uploaded privately! Open your gallery to download it.");
+      status("✅ Picture saved to your private gallery!");
     } catch (error) {
-      status("Upload failed: " + error.message);
+      status("Could not save picture: " + error.message +
+        ". Check your connection and storage policies.");
     } finally {
-      $("uploadButton").disabled = !selectedFile;
+      busy = false;
+
+      if (currentUser) {
+        $("captureButton").disabled = false;
+        $("switchButton").disabled = false;
+      }
     }
   });
 
-  $("galleryButton").addEventListener("click", () => {
-    window.location.href = "YOUR_GALLERY_URL";
+  $("retakeButton").addEventListener("click", () => {
+    if (busy) return;
+
+    $("snapshot").style.display = "none";
+    $("video").style.display = "block";
+    $("retakeButton").hidden = true;
+
+    status("Ready for another picture.");
   });
 
   $("logoutButton").addEventListener("click", async () => {
+    stopCamera();
     const { error } = await client.auth.signOut();
-    if (error) status(error.message);
-    else status("You have signed out.");
+
+    if (error) status("Sign-out failed: " + error.message);
+    else status("Signed out.");
   });
 
   client.auth.onAuthStateChange((_event, session) => {
-    showSession(session?.user || null);
+    const user = session?.user || null;
+    showSession(user);
+
+    if (user) {
+      setTimeout(() => {
+        if (currentUser?.id === user.id &&
+            !$("captureButton").disabled) {
+          startCamera();
+        }
+      }, 0);
+    }
   });
 
-  refreshSession();
+  // Start the camera if the user already has a valid session.
+  (async () => {
+    const { data, error } = await client.auth.getSession();
+
+    if (error) {
+      status("Could not check login: " + error.message);
+      return;
+    }
+
+    showSession(data.session?.user || null);
+
+    if (data.session?.user) {
+      await startCamera();
+    }
+  })();
+
+  // Release the camera when leaving the page.
+  window.addEventListener("pagehide", stopCamera);
 })();
 </script>
 </body>
