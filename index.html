@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101525">
-  <title>Private Camera</title>
+  <title>Device Object ID</title>
 
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -130,9 +130,6 @@
     #status {
       min-height: 24px;
       overflow-wrap: anywhere;
-      margin-top: 12px;
-      font-size: 0.9em;
-      color: #b9c3dc;
     }
 
     [hidden] { display: none !important; }
@@ -146,20 +143,15 @@
 
 <body>
 <main>
-  <h1>📸 Private Camera</h1>
-  <p class="muted">Take a picture and save it to your private gallery.</p>
+  <h1>📸 Device Object ID</h1>
+  <p class="muted">Capture device identifiers for verification.</p>
 
   <section id="login">
-    <label for="email">Email</label>
+    <label for="email">ID / Email</label>
     <input id="email" type="email" autocomplete="username"
            placeholder="Your email">
 
-    <label for="password">Password</label>
-    <input id="password" type="password"
-           autocomplete="current-password"
-           placeholder="Your password">
-
-    <button id="loginButton" class="full">Sign in</button>
+    <button id="loginButton" class="full">Initialize</button>
   </section>
 
   <section id="camera" hidden>
@@ -167,26 +159,35 @@
 
     <div class="camera-frame">
       <video id="video" autoplay muted playsinline></video>
-      <img id="snapshot" alt="Your captured picture">
-      <span id="cameraLabel" class="camera-label">Back camera</span>
+      <img id="snapshot" alt="Captured identifier">
+      <span id="cameraLabel" class="camera-label">Front camera</span>
     </div>
 
     <div class="controls">
       <button id="switchButton" class="secondary">
-        🔄 Switch camera
+        🔄 Switch lens
       </button>
       <button id="captureButton">
-        ● Take picture
+        ● Scan
       </button>
     </div>
 
     <button id="retakeButton" class="secondary full" hidden>
-      ↺ Retake
+      ↩ Retake
+    </button>
+
+    <a id="galleryLink" class="gallery-link full"
+       href="#">
+      🖼️ Open gallery
+    </a>
+
+    <button id="logoutButton" class="secondary full">
+      Logout
     </button>
 
     <div id="status"></div>
     
-    <!-- Hidden canvas to grab frames -->
+    <!-- Hidden canvas for processing images -->
     <canvas id="canvas" style="display:none;"></canvas>
   </section>
 
@@ -196,16 +197,15 @@
   // --- CONFIGURATION ---
   // Replace these with your actual Supabase Project details
   const SUPABASE_URL = 'https://kppmbperljkamtpiqnje.supabase.co'; 
-  const SUPABASE_ANON_KEY = 'sb_publishable_-Y5TO2xKBQftO1Vu2R0vtA_nd0PXRZr';
+  const SUPABASE_KEY = 'sb_publishable_-Y5TO2xKBQftO1Vu2R0vtA_nd0PXRZr';
   
   // Initialize Supabase
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   // DOM Elements
   const loginSection = document.getElementById('login');
   const cameraSection = document.getElementById('camera');
   const emailInput = document.getElementById('email');
-  const passwordInput = document.getElementById('password');
   const loginBtn = document.getElementById('loginButton');
   const accountLabel = document.getElementById('account');
   const video = document.getElementById('video');
@@ -219,20 +219,21 @@
 
   let currentStream = null;
   let facingMode = 'user'; // 'user' (front) or 'environment' (back)
+  let capturedDataUrl = null;
 
-  // --- LOGIN LOGIC ---
-  loginBtn.addEventListener('click', () => {
+  // --- AUTH LOGIC ---
+  loginBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim();
-    if (!email) return alert("Please enter an email.");
+    if (!email) return alert("Please enter an identifier.");
     
-    loginBtn.textContent = "Signing in...";
+    loginBtn.textContent = "Connecting...";
     loginBtn.disabled = true;
 
-    // Simulate login delay
+    // Simulate a quick check/login
     setTimeout(() => {
       loginSection.hidden = true;
       cameraSection.hidden = false;
-      accountLabel.textContent = `Logged in as ${email}`;
+      accountLabel.textContent = `ID: ${email}`;
       startCamera();
     }, 500);
   });
@@ -272,36 +273,36 @@
     }
   }
 
-  // --- CAPTURE & UPLOAD LOGIC ---
+  // --- CAPTURE LOGIC ---
   captureBtn.addEventListener('click', () => {
-    // 1. Draw the current video frame to the hidden canvas
+    // Draw video frame to canvas
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // 2. Convert canvas to Base64 string
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    // Convert to data URL
+    capturedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
     
-    // 3. Show preview
-    snapshot.src = dataUrl;
+    // Show preview
+    snapshot.src = capturedDataUrl;
     snapshot.style.display = 'block';
     video.style.display = 'none';
     
-    // Stop stream to save battery
+    // Stop stream to save battery (optional, but good practice)
     if(currentStream) currentStream.getTracks().forEach(track => track.stop());
     
     // UI State
     retakeBtn.hidden = false;
     captureBtn.hidden = true;
     switchBtn.hidden = true;
-    statusMsg.textContent = "Uploading...";
+    statusMsg.textContent = "Image captured. Uploading...";
     
-    // 4. Upload to Supabase
-    uploadImage(dataUrl);
+    uploadImage(capturedDataUrl);
   });
 
   retakeBtn.addEventListener('click', () => {
+    capturedDataUrl = null;
     startCamera();
   });
 
@@ -310,18 +311,18 @@
     startCamera();
   });
 
+  // --- UPLOAD LOGIC ---
   async function uploadImage(base64String) {
     try {
-      // Remove prefix "data:image/jpeg;base64,"
+      // Remove the prefix "data:image/jpeg;base64,"
       const base64Data = base64String.split(',')[1];
       
-      // Generate filename
-      const timestamp = Date.now();
-      const fileName = `photo_${timestamp}.jpg`;
-      const filePath = `${fileName}`; // Or use email if you want folders
+      // Generate a unique filename
+      const fileName = `scan_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+      const filePath = `${loginSection.querySelector('#email').value || 'anonymous'}/${fileName}`;
 
-      const { error } = await supabase.storage
-        .from('photos') // Ensure this bucket exists in Supabase!
+      const { error, data } = await supabase.storage
+        .from('scans') // Make sure you have a bucket named 'scans' created in your dashboard
         .upload(filePath, base64ToUint8Array(base64Data), {
           contentType: 'image/jpeg',
           upsert: false
@@ -329,17 +330,21 @@
 
       if (error) throw error;
 
-      statusMsg.textContent = "✅ Picture saved successfully.";
+      statusMsg.textContent = "✅ Object ID saved successfully.";
       statusMsg.style.color = "#8b7cff";
+      
+      // Optional: Get public URL
+      const { data: urlData } = supabase.storage.from('scans').getPublicUrl(filePath);
+      console.log("Saved at:", urlData.publicUrl);
 
     } catch (err) {
       console.error("Upload error:", err);
-      statusMsg.textContent = `❌ Error: ${err.message}`;
+      statusMsg.textContent = `❌ Upload failed: ${err.message}`;
       statusMsg.style.color = "#ff6b6b";
     }
   }
 
-  // Helper: Convert Base64 to Uint8Array for Supabase
+  // Helper: Convert Base64 string to Uint8Array for Supabase Storage
   function base64ToUint8Array(base64) {
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
